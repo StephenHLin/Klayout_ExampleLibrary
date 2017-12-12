@@ -1,4 +1,4 @@
-# Klayout ExampleLibrary
+# Klayout Example Library
 
 This code made to demonstrate how to create a library of devices that can be used with the [SiEPIC PDK](https://github.com/lukasc-ubc/SiEPIC_EBeam_PDK/). The code includes a library registering file, a Add-Drop Ring device example, and automatic layout creator macro.
 
@@ -12,7 +12,7 @@ This code made to demonstrate how to create a library of devices that can be use
 - Place *ExampleLibrary*(The Folder) in your KLayout/tech/EBeam/pymacros folder
 - Place *Example_LayoutScript.lym* in your KLayout/pymacros
 
-##Description
+## Description
 This package attempts to demonstrate a way of modularly organizing devices so that file sizes stay short making it easier to read within Klayout's native interpreter.
 The package also demos how to use relative sizes to design devices that could change in size along with how to draw polygons using Double-type coordinates (Dpoint).
 
