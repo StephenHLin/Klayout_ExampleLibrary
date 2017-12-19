@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="utf-8"?>
+<klayout-macro>
+ <description/>
+ <version/>
+ <category>pymacros</category>
+ <prolog/>
+ <epilog/>
+ <doc/>
+ <autorun>true</autorun>
+ <autorun-early>false</autorun-early>
+ <shortcut/>
+ <show-in-menu>false</show-in-menu>
+ <group-name/>
+ <menu-path/>
+ <interpreter>python</interpreter>
+ <dsl-interpreter-name/>
+ <text>'''
+MIT License
+
+Copyright (c) 2017 Stephen
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+'''
+
+#Required to use klayout functions
+import pya
+from pya import *
+import importlib
+##     
+
+#
+dbu = 0.001 #The database unit of the layout, used to convert numbers later in the code
+angle_stepsize = 0.01 #stepsize of iterating the circle, decrease for more accurate, but takes longer if you do
+pi = math.pi
+#
+
+# Create aliases for KLayout Python API methods:
+# basic stuff required by Klayout, just copy it if unsure.
+Box = pya.Box
+Point = pya.Point
+Polygon = pya.Polygon
+Text = pya.Text
+Trans = pya.Trans
+LayerInfo = pya.LayerInfo   
+#
+
+##COPIED FROM AddDropRing library
+#General Functions
+def frange(start,stop,step):
+  #Used to define a float range, since python doesnt have a built in one
+  x = start
+  while x &lt;stop:
+      yield x #returns value as generator, speeding up stuff
+      x+=step
+        
+def gen_coord(r,w,angle_array):
+    #Generates your coordinates for the ring. Keep in mind w is half of the wavegudies width (refer to below to see where we defined it)
+    for angle in angle_array:
+      x1 = (r-w)*math.cos(angle)
+      y1 = (r-w)*math.sin(angle)
+      x2 = (r+w)*math.cos(angle)
+      y2 = (r+w)*math.sin(angle)
+      yield x1,y1,x2,y2 #yield is a more advance form of 'return'. It returns the generator instead of real values making it faster. It also allows the code to keep running.
+      #Documentation for Yield: https://docs.python.org/2.4/ref/yield.html
+#
+
+#Device Class
+class AddDropRing(pya.PCellDeclarationHelper):
+
+  def __init__(self):#REQUIRED 
+
+    # Important: initialize the super class
+    super(AddDropRing, self).__init__()#REQUIRED 
+
+    # declare the parameters
+    self.param("silayer", self.TypeLayer, "Si Layer", default = LayerInfo(1, 0)) #Creates a choice for the Silicon layer
+    self.param("r", self.TypeDouble, "Radius [um]", default = 16) #Input for the waveguide width
+    self.param("gap", self.TypeDouble, "gap [um]", default = 0.5) #Input for gap
+    self.param("w1", self.TypeDouble, "Ring Waveguide Width [nm]", default = 400) #Input for the waveguide width
+    self.param("w2", self.TypeDouble, "Bus1 Waveguide Width [nm]", default = 400) #Input for the waveguide width
+    self.param("w3", self.TypeDouble, "Bus2 Waveguide Width [nm]", default = 400) #Input for the waveguide width
+    self.param("textl", self.TypeLayer, "Text Layer", default = LayerInfo(10, 0)) #Choice for the layer Text goes on
+    self.param("pinrec", self.TypeLayer, "PinRec Layer", default = LayerInfo(69, 0)) #Choice for the layer Pin goes on
+    self.param("devrec", self.TypeLayer, "DevRec Layer", default = LayerInfo(68, 0)) #choice for the layer DevRec goes on
+    
+  def display_text_impl(self):#REQUIRED
+    # Provide a descriptive text for the cell
+    return "AddDropRing"#If this function is called, it will return this text
+
+  def can_create_from_shape_impl(self):#REQUIRED
+    return False#REQUIRED   
+  
+  def produce_impl(self):#REQUIRED, Creates the actual device layout
+    # creates variable for the parameters we declared above.   
+    ly = self.layout
+    shapes = self.cell.shapes
+
+    LayerSi = self.silayer
+    LayerSiN = ly.layer(LayerSi)
+    TextLayerN = ly.layer(self.textl)
+    LayerPinRecN = ly.layer(self.pinrec)
+    LayerDevRecN = ly.layer(self.devrec)
+    TextLayerN = ly.layer(self.textl)
+    
+    r = self.r #r is in microns, so no need to dbu it.
+    gap = self.gap #also in microns
+    w1 = self.w1*dbu/2.0 #drawing from center line, only have to add half
+    w2 = self.w2*dbu/2.0 #drawing from center line, only have to add half
+    w3 = self.w3*dbu/2.0 #drawing from center line, only have to add half   
+    ##
+    
+    ##Step1 Create an array of the angles we need using frange
+    #frange means float-range, allowing for decimals (e.g. pi)   
+    angle_array=[]
+    for theta in frange(0,2*pi+angle_stepsize,angle_stepsize):
+        #note we do an endpoint of 2pi + angle_stepsize here, if you don't it wont complete the full circle
+        #There are probably more elegant solutions than this method.
+        angle_array.append(theta)
+    ##
+    
+    ##Step2 Find the Coordinates of the gratings via the angles  
+    x1= [] #Outer and Inner Coordinates
+    y1 = []
+    x2 = []
+    y2 = []
+    
+    for coord in gen_coord(r,w1,angle_array): #coord becomes the result returned by 'gen_coord' each iteration.
+        x1.append(coord[0])  #we then write the individual returned values into seperate variables as the function actually provides 4 returns per run (x1,y1,x2,y2 in that order)
+        y1.append(coord[1])
+        x2.append(coord[2])
+        y2.append(coord[3])
+        
+    x_final = []#I declare two array lists here to make a final summized list 
+    y_final = []
+        
+    x_final.extend(x1)#extend adds the values to the end of the list, if you use .append here it will put a list inside a list, resulting in errors when you try to read it.
+    x_final.extend(reversed(x2))#Easy to understand example: https://stackoverflow.com/questions/252703/difference-between-append-vs-extend-list-methods-in-python
+    y_final.extend(y1) #Documentation for Arrays:  https://docs.python.org/3/library/array.html
+    y_final.extend(reversed(y2))
+    ##
+    
+    ##Step3 Draw the Coordinates into Polygons        
+    #makes Dpoints from the coordinates, dpoints stands for double-points, its a pya/klayout format and is quite annoying to deal with
+    dpts=[pya.DPoint(x_final[i], y_final[i]) for i in range(len(x_final))] #I create a list called dpts with values of X,Y for each entry.  
+    #This is a one-liner way of doing it and as you can see i assume that X_final and Y_final are the same length
+    dpolygon = DPolygon(dpts)#I create a double-polygon using klayout's 'DPolygon()' method.
+    #Documentation: https://www.klayout.de/0.16/rba_DPolygon.html    
+        
+    #dpoint polygon solution thanks to Jaspreet#
+    element = Polygon.from_dpoly(dpolygon*(1.0/dbu)) #I create the actual polygon that klayout can draw here by converting it using the polygon.from_dpoly() method.
+    shapes(LayerSiN).insert(element)#I insert the 'shapes' i made into the layer 'LayerSiN' (defined above) to create the device on the layer i want     
+    ##
+    
+    ##Step4 waveguides, because we used Dpoint, you might see some rounding errors, check the boundaries of your device at the end.
+    bus_pos = self.cell.bbox().height()*dbu/2+gap #i called cell.bbox here which means boundary box. It is the box klayout makes around the device i currently have.
+    #My device box should be only around my ring currently.
+    bus_neg = -bus_pos
+    
+    #BUS WG1
+    dpts=[pya.DPoint(bus_neg, bus_neg),pya.DPoint(bus_neg, bus_neg-2*w2),pya.DPoint(bus_pos, bus_neg-2*w2),pya.DPoint(bus_pos, bus_neg )] #I define the four corners of the waveguide box, for bends, use PATH, see Layout example
+    dpolygon = DPolygon(dpts)
+    element = Polygon.from_dpoly(dpolygon*(1.0/dbu))
+    shapes(LayerSiN).insert(element)
+    #BUS WG2
+    dpts=[pya.DPoint(bus_neg, bus_pos),pya.DPoint(bus_neg, bus_pos+2*w3),pya.DPoint(bus_pos, bus_pos+2*w3),pya.DPoint(bus_pos, bus_pos )] #I define the four corners of the waveguide box, for bends, use PATH, see Layout example
+    dpolygon = DPolygon(dpts)
+    element = Polygon.from_dpoly(dpolygon*(1.0/dbu))
+    shapes(LayerSiN).insert(element)
+    ##
+    
+    ##Step6 Pins, as short paths:
+    pin_length = 200 # database units, = 0.2 microns
+    device_height2 = self.cell.bbox().height()-w2*2/dbu #I call the bbox again, but this time it includes the waveguides i drew above
+    device_height3 = self.cell.bbox().height()-w3*2/dbu #Note that we have different heights here, this is to demo how to have different WG widths
+    device_width = self.cell.bbox().width() #not symmetrical this time. Note that we dont use DBU here cuz path uses a different unit
+    #Bus1
+    pin = pya.Path([Point(-device_width/2-pin_length/2, -device_height2/2), Point(-device_width/2+pin_length/2,-device_height2/2)], w2/dbu*2) #Path is used here for the pins, this is just a legacy tradition thing, you can easily do it with polygons i guess
+    shapes(LayerPinRecN).insert(pin)
+    t = Trans(-device_width/2, -device_height2/2)
+    text = Text ("pin1", t)
+    shape = shapes(LayerPinRecN).insert(text)
+    shape.text_size = 0.4/dbu
+    
+    pin = pya.Path([Point(device_width/2-pin_length/2, -device_height2/2), Point(device_width/2+pin_length/2,-device_height2/2)], w2/dbu*2)
+    shapes(LayerPinRecN).insert(pin)
+    t = Trans(device_width/2, -device_height2/2)
+    text = Text ("pin2", t)
+    shape = shapes(LayerPinRecN).insert(text)
+    shape.text_size = 0.4/dbu
+    
+    #Bus2
+    pin = pya.Path([Point(-device_width/2-pin_length/2, device_height3/2), Point(-device_width/2+pin_length/2,device_height3/2)], w3/dbu*2) 
+    shapes(LayerPinRecN).insert(pin)
+    t = Trans(-device_width/2, device_height3/2)
+    text = Text ("pin3", t)
+    shape = shapes(LayerPinRecN).insert(text)
+    shape.text_size = 0.4/dbu
+    
+    pin = pya.Path([Point(device_width/2-pin_length/2, device_height3/2), Point(device_width/2+pin_length/2,device_height3/2)], w3/dbu*2)
+    shapes(LayerPinRecN).insert(pin)
+    t = Trans(device_width/2, device_height3/2)
+    text = Text ("pin4", t)
+    shape = shapes(LayerPinRecN).insert(text)
+    shape.text_size = 0.4/dbu
+    ##
+    
+    
+    ## Create the device recognition layer
+    # this is used in other functions, so it should encompass the whole device.
+    #Notice the box doesnt encompass the pins.
+    dev = Box(-self.cell.bbox().width()/2+pin_length/2,-self.cell.bbox().height()/2,self.cell.bbox().width()/2-pin_length/2,self.cell.bbox().height()/2)
+    shapes(LayerDevRecN).insert(dev)
+    ##     
+    
+    print("Done drawing device - AddDropRing")
+##End Copy##
+
+#Declares the Library Class to add into the 'instance' button
+class SiEPIC(pya.Library):
+  """
+  The library where we will put the PCell into 
+  """
+
+  def __init__(self):
+
+    print("Initializing DEV_Example PCells library.") #Output Message
+  
+    # Set the description
+    self.description = "Example of DEV_Libraries" #Description of the library
+    
+    # Create the Device Entries
+    self.layout().register_pcell("[1] DEV_AddDropRing", AddDropRing())#registers the device name. '[1] AddDropRing' is what you'll see on the interface, 'ExampleLibrary.AddDropRing.AddDropRing()' is the class declared in the AddDropRing file  
+    
+    # Register with the name "ExampleLibrary".
+    self.register("DEV_Library")
+
+# Instantiate and register the library
+SiEPIC()
+#LASTLY: Remember to click the option panel near the top and enable 'run on startup' to have it automatically show up in your 'instance' button
+    </text>
+</klayout-macro>

@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<klayout-macro>
+ <description/>
+ <version/>
+ <category>pymacros</category>
+ <prolog/>
+ <epilog/>
+ <doc/>
+ <autorun>false</autorun>
+ <autorun-early>false</autorun-early>
+ <shortcut/>
+ <show-in-menu>false</show-in-menu>
+ <group-name/>
+ <menu-path/>
+ <interpreter>python</interpreter>
+ <dsl-interpreter-name/>
+ <text>'''
+MIT License
+
+Copyright (c) 2017 Stephen
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+Based on Lukas Chrowstowski's code
+Author: Stephen
+'''
+
+import pya
+
+###############PARAMETERS####################
+#Shared Sweep
+sweep_radius=[10,20,30,40,50]
+#############################################
+
+##SECONDARY ADJUSTABLES########################
+wg_bend_radius = 16 #16 for tm
+wg_width=400
+##################################
+
+###Don't need to adjust here###
+##ERROR CHECKS, to see if a new panel window is selected, etc.
+######Configure variables to draw structures in the presently selected cell:
+lv = pya.Application.instance().main_window().current_view()
+if lv == None:
+  raise Exception("No view selected")
+# Find the currently selected layout.
+ly = pya.Application.instance().main_window().current_view().active_cellview().layout() 
+if ly == None:
+  raise Exception("No layout")
+# find the currently selected cell:
+cell = pya.Application.instance().main_window().current_view().active_cellview().cell
+if cell == None:
+  raise Exception("No cell")
+# clean all cells within "cell"
+ly.prune_subcells(cell.cell_index(), 10)
+##
+
+#Assigns the layers as it does in the device scripts
+LayerSi = pya.LayerInfo(1, 0)
+LayerSiN = cell.layout().layer(LayerSi)
+fpLayer = pya.LayerInfo(99, 0)
+fpLayerN = cell.layout().layer(fpLayer)
+TextLayer = pya.LayerInfo(10, 0)
+TextLayerN = cell.layout().layer(TextLayer)
+dbu = ly.dbu # fetch the database parameters
+############################################
+
+
+# Draw floor plan
+cell.shapes(fpLayerN).insert(pya.Box(0,0, 900/dbu, 500/dbu)) #we have a 900x500 space here
+
+########Import Grating Coupler#################
+#Disabled here as GCs can be different
+#The comment examples import from a library called "LIB" with the GC called "te1550_220_25d_oxide_broadband_wg450"
+
+#EXAMPLES#
+#GC_imported = ly.create_cell("te1550_220_25d_oxide_broadband_wg450", "LIB").cell_index()
+#print ("Cell: GC_imported: #%s" % GC_imported)
+#GC2_imported = ly.create_cell("tm_1550_220_10_oxide", "LIB").cell_index()
+#print ("Cell: GC2_imported: #%s" % GC2_imported)
+#END: EXAMPLES#
+
+GC1_XOffset = 60/dbu #this tells me the offset of where to draw the GCs, if you set as 0,0 it will draw in the bottom left corner
+GC1_YOffset = 20 / dbu
+########################################
+
+
+
+
+
+#DO FILE#
+x = 0 #Starting position of the layout 
+y = 0
+x_offset = 0 #initialized as zero, each intereation increases it
+
+# Create a sub-cell for our Ring resonator layout
+top_cell = cell
+
+for i in range(len(sweep_radius)): #draw for each value in the array
+  ###Loads Current Iteration Parameters####
+  radius=sweep_radius[i] 
+  ########################################
+
+  ###Creates a Single Cell for this one device, better for moving###
+  cell = cell.layout().create_cell("PCMSpiralTEM_r%s" % (radius))
+  #Create the cell with correct naming    
+  t = pya.Trans(pya.Trans.R0, GC1_XOffset,GC1_YOffset) #location to place the cell 
+  top_cell.insert(pya.CellInstArray(cell.cell_index(), t)) #draws the cell at the given location and places it under the 'top_cell' parent
+  #######################################   
+
+  #Calculate the location of the device, changes based on each iteration
+  x += x_offset
+  
+  #########GC POSITIONING#######################
+  #The GC device doesnt have its port as a 0,0, therefore we must manually find the port and set it as 0,0
+  GC1_X = -50.483/dbu+x/dbu #Use these to set the input port of the bottom waveguide as 0,0.
+  GC1_Y = -9.598/dbu+y/dbu
+  t = pya.Trans(pya.Trans.R0, GC1_X,GC1_Y)#t stands for 'transform' here, so (ROTATION,X,Y) 
+  
+  #BELOW CODE WILL DRAW THE GC 
+  #cell.insert(pya.CellInstArray(GC_imported, t, pya.Point(0,127/dbu), pya.Point(0,0), 4, 1))
+    
+  ###Label for GC Input Port 2###         
+  t = pya.Trans(0+x/dbu,127/dbu+y/dbu)#place on 2nd GC's port
+  text = pya.Text ("opt_in_TE_1550_device_SpiralTEM_r%s" % (radius), t) #Formats the label we want to display
+  shape = cell.shapes(TextLayerN).insert(text) #inserts into the Textlayer of our cell
+  shape.text_size = 3/dbu #text font size
+  ##########################
+  
+  
+  #### RING PCELL ######
+  #Imports the cell from the library, you can specify the parameters you want, otherwise it uses the default listed within the device.
+  #'ExampleLibrary is the name you did register() with
+  pcell = ly.create_cell("[1] AddDropRing", "ExampleLibrary", {"silayer": LayerSi  , "r": radius, "textl": pya.LayerInfo(10, 0), "pinrec": pya.LayerInfo(69, 0), "textl": pya.LayerInfo(68, 0)} )
+  print ("Cell: pcell: #%s" % pcell.cell_index())
+  
+  ##BOUNDARY BOX DIMENSIONS FOR ROUTING
+  devicewidth = pcell.bbox().width()*dbu #Width of the boundary box, keep in mind this is before rotation
+  deviceheight = pcell.bbox().height()*dbu
+  
+  #location of where the device is placed
+  xloc = deviceheight/dbu+x/dbu+16/dbu #device width because the center of the device is 0, x for increasing each iteration, 16 to guarentee that there is enough space for bends
+  yloc = 127*1.5/dbu
+  
+  ##Pin Locations for WG routing
+  pin1x = (deviceheight+16)+(deviceheight/2)-(wg_width/2/1000)#The height is used here because we rotated our device 90 degrees
+  pin1y = 127*1.5-devicewidth/2+0.1 #minus width here, otherwise we would be in the middle of the device,0.1 because of pins, since our device gets a boundary box that includes the pins defaultly in klayout  
+  pin3x = (deviceheight+16)-(deviceheight/2)+(wg_width/2/1000)#since this is based on our boundary box, we must minus half the wg width to match the pin location
+  pin3y = pin1y
+
+  pin2x = pin1x
+  pin2y = 127*1.5+devicewidth/2-0.1
+  pin4x = pin3x
+  pin4y = pin2y
+  ##
+  
+  start_point = [ x, y ] #sets x and y as the starting points now, so 0,0 will be located at x,y
+  
+  #Draw the Ring
+  t1 = pya.Trans(pya.Trans.R90, xloc, 127/dbu*1.5)
+  instance = cell.insert(pya.CellInstArray(pcell.cell_index(), t1)) #inserts the polygon
+  
+  #Points of the WG
+  points_gc1 = [[0,0],[pin1x,0],[pin1x,pin1y]] 
+  points_gc2 = [[0,127],[pin3x,127],[pin3x,pin3y]]   
+  points_gc3 = [[0,127*2],[pin4x,127*2],[pin4x,pin4y]] 
+  points_gc4 = [[0,127*3],[pin2x,127*3],[pin2x,pin2y]]  
+  #Inserts the waveguides
+  layout_waveguide_rel(cell, LayerSi, start_point, points_gc1, wg_width*dbu, wg_bend_radius)
+  layout_waveguide_rel(cell, LayerSi, start_point, points_gc2, wg_width*dbu, wg_bend_radius)
+  layout_waveguide_rel(cell, LayerSi, start_point, points_gc3, wg_width*dbu, wg_bend_radius)
+  layout_waveguide_rel(cell, LayerSi, start_point, points_gc4, wg_width*dbu, wg_bend_radius)
+
+  #Update Xoffset to calculate spacing between devices
+  x_offset = cell.bbox().width()*dbu+10 #ensures there is 10microns distance at least
+  
+        
+print ("LAYOUT COMPLETE")</text>
+</klayout-macro>
