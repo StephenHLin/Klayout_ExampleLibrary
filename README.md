@@ -1,3 +1,5 @@
+#OUTDATED: This is a legacy method of creating libraries. The current SiEPIC-PDK no longer follows this format as closely.
+
 # Klayout Example Library
 
 This code is made to demonstrate how to create a library of devices that can be used with the [SiEPIC PDK](https://github.com/lukasc-ubc/SiEPIC_EBeam_PDK/). The code includes a library registering file, a Add-Drop Ring device example, and an automatic layout creator macro.
